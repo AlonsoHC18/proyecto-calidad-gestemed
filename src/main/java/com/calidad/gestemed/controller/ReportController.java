@@ -3,36 +3,49 @@ package com.calidad.gestemed.controller;
 import com.calidad.gestemed.domain.Asset;
 import com.calidad.gestemed.repo.AssetRepo;
 import com.lowagie.text.*;
-import com.lowagie.text.Font;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import lombok.RequiredArgsConstructor;
-import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.http.*;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.ui.Model;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+import jakarta.validation.constraints.Email;
 
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
-
-
-// Este controlador gestiona la generación de reportes, permitiendo descargar datos de activos
-// en formato PDF y Excel (XLSX). Prepara los datos, crea los documentos y los
-// envía al usuario con el formato y nombre de archivo correctos.
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 @Controller
 @RequiredArgsConstructor
 @RequestMapping("/reports")
+@Validated
 public class ReportController {
 
     private final AssetRepo assetRepo;
+    private final JavaMailSender mailSender;
 
+    // Map para almacenar envíos programados: email -> configuración
+    private final Map<String, ScheduledReport> scheduledReports = new HashMap<>();
+
+    /*** Página de reportes ***/
     @GetMapping
-    public String index() { return "reports/index"; }
+    public String index(Model model) {
+        return "reports/index";
+    }
 
+    /*** Exportar Excel de activos ***/
     @GetMapping(value="/assets.xlsx", produces="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     public ResponseEntity<byte[]> assetsExcel() throws Exception {
         try (Workbook wb = new XSSFWorkbook()) {
@@ -75,6 +88,7 @@ public class ReportController {
         }
     }
 
+    /*** Exportar PDF de activos ***/
     @GetMapping(value="/assets.pdf", produces="application/pdf")
     public ResponseEntity<byte[]> assetsPdf() throws Exception {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -97,6 +111,7 @@ public class ReportController {
                 .body(bos.toByteArray());
     }
 
+    /*** PDF de resumen ***/
     @GetMapping(value="/summary.pdf", produces="application/pdf")
     public ResponseEntity<byte[]> summaryPdf() throws Exception {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
@@ -114,5 +129,80 @@ public class ReportController {
                 .body(bos.toByteArray());
     }
 
+    /*** Formulario de envíos automáticos ***/
+    @PostMapping("/auto")
+    public String scheduleReport(
+            @RequestParam @Email String email,
+            @RequestParam(required=false) boolean sendExcel,
+            @RequestParam(required=false) boolean sendPdf,
+            @RequestParam int intervalDays,
+            Model model
+    ) {
+        if (!sendExcel && !sendPdf) {
+            model.addAttribute("error", "Debe seleccionar al menos un formato (Excel o PDF).");
+            return "reports/index";
+        }
+        if (intervalDays != 15 && intervalDays != 30) {
+            model.addAttribute("error", "Intervalo inválido.");
+            return "reports/index";
+        }
+
+        ScheduledReport config = new ScheduledReport(email, sendExcel, sendPdf, intervalDays, LocalDateTime.now());
+        scheduledReports.put(email, config);
+
+        // Envío inmediato
+        sendReportEmail(config);
+
+        model.addAttribute("success", "Reporte programado correctamente.");
+        return "reports/index";
+    }
+
+    /*** Job diario que revisa envíos programados ***/
+    @Scheduled(cron = "0 0 8 * * *") // todos los días a las 8:00am
+    public void sendScheduledReports() {
+        LocalDateTime now = LocalDateTime.now();
+        for (ScheduledReport config : scheduledReports.values()) {
+            if (config.getLastSent().plusDays(config.getIntervalDays()).isBefore(now)) {
+                sendReportEmail(config);
+                config.setLastSent(now);
+            }
+        }
+    }
+
+    /*** Lógica de envío de correo ***/
+    private void sendReportEmail(ScheduledReport config) {
+        try {
+            SimpleMailMessage msg = new SimpleMailMessage();
+            msg.setTo(config.getEmail());
+            msg.setSubject("Reporte de activos");
+            StringBuilder body = new StringBuilder("Se adjuntan los reportes solicitados.\nFormatos: ");
+            if (config.isSendExcel()) body.append("Excel ");
+            if (config.isSendPdf()) body.append("PDF");
+            msg.setText(body.toString());
+            mailSender.send(msg);
+            System.out.println("[INFO] Reporte enviado a " + config.getEmail());
+        } catch (Exception e) {
+            System.out.println("[WARN] No se pudo enviar reporte a " + config.getEmail());
+        }
+    }
+
+    /*** Clase interna para envíos programados ***/
+    @RequiredArgsConstructor
+    private static class ScheduledReport {
+        private final String email;
+        private final boolean sendExcel;
+        private final boolean sendPdf;
+        private final int intervalDays;
+        private LocalDateTime lastSent;
+
+        public boolean isSendExcel() { return sendExcel; }
+        public boolean isSendPdf() { return sendPdf; }
+        public int getIntervalDays() { return intervalDays; }
+        public String getEmail() { return email; }
+        public LocalDateTime getLastSent() { return lastSent; }
+        public void setLastSent(LocalDateTime dt) { this.lastSent = dt; }
+    }
+
+    /*** Helper ***/
     private String nvl(String s) { return s == null ? "" : s; }
 }
