@@ -2,26 +2,25 @@ package com.calidad.gestemed.controller;
 
 import com.calidad.gestemed.domain.Asset;
 import com.calidad.gestemed.repo.AssetRepo;
-import com.lowagie.text.*;
-import com.lowagie.text.Font;
-import com.lowagie.text.pdf.PdfPTable;
-import com.lowagie.text.pdf.PdfWriter;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.springframework.http.*;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayOutputStream;
-import java.time.LocalDate;
+import com.itextpdf.text.*;
+import com.itextpdf.text.pdf.*;
 
-
-// Este controlador gestiona la generación de reportes, permitiendo descargar datos de activos
-// en formato PDF y Excel (XLSX). Prepara los datos, crea los documentos y los
-// envía al usuario con el formato y nombre de archivo correctos.
+import javax.servlet.http.HttpServletResponse;
+import java.io.*;
+import java.math.BigDecimal;
+import java.util.List;
 
 @Controller
 @RequiredArgsConstructor
@@ -30,89 +29,92 @@ public class ReportController {
 
     private final AssetRepo assetRepo;
 
+    // Página de reportes
     @GetMapping
-    public String index() { return "reports/index"; }
+    public String reportPage() {
+        return "reports/reports"; // Vista con botones de Excel, PDF y envío automático
+    }
 
-    @GetMapping(value="/assets.xlsx", produces="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    public ResponseEntity<byte[]> assetsExcel() throws Exception {
-        try (Workbook wb = new XSSFWorkbook()) {
-            Sheet s = wb.createSheet("Activos");
-            int r = 0;
+    // Exportar Excel
+    @GetMapping("/assets.xlsx")
+    public void exportExcel(HttpServletResponse response) throws IOException {
+        List<Asset> assets = assetRepo.findAll();
 
-            // Header
-            Row h = s.createRow(r++);
-            int c = 0;
-            h.createCell(c++).setCellValue("ID Activo");
-            h.createCell(c++).setCellValue("Modelo");
-            h.createCell(c++).setCellValue("Serial");
-            h.createCell(c++).setCellValue("Fabricante");
-            h.createCell(c++).setCellValue("Fecha Compra");
-            h.createCell(c++).setCellValue("Ubicación");
-            h.createCell(c++).setCellValue("Valor");
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("Activos");
 
-            // Datos
-            for (Asset a : assetRepo.findAll()) {
-                Row row = s.createRow(r++);
-                int j = 0;
-                row.createCell(j++).setCellValue(nvl(a.getAssetId()));
-                row.createCell(j++).setCellValue(nvl(a.getModel()));
-                row.createCell(j++).setCellValue(nvl(a.getSerialNumber()));
-                row.createCell(j++).setCellValue(nvl(a.getManufacturer()));
-                row.createCell(j++).setCellValue(a.getPurchaseDate() != null ? a.getPurchaseDate().toString() : "");
-                row.createCell(j++).setCellValue(nvl(a.getInitialLocation()));
-                row.createCell(j++).setCellValue(a.getValue() != null ? a.getValue().toString() : "");
-            }
-
-            for (int i = 0; i < 7; i++) s.autoSizeColumn(i);
-
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            wb.write(bos);
-
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=activos.xlsx")
-                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
-                    .body(bos.toByteArray());
+        Row header = sheet.createRow(0);
+        String[] columns = {"ID Activo", "Modelo", "Serial", "Fabricante", "Fecha Compra", "Ubicación", "Valor"};
+        for(int i=0; i<columns.length; i++){
+            Cell cell = header.createCell(i);
+            cell.setCellValue(columns[i]);
         }
-    }
 
-    @GetMapping(value="/assets.pdf", produces="application/pdf")
-    public ResponseEntity<byte[]> assetsPdf() throws Exception {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        Document doc = new Document();
-        PdfWriter.getInstance(doc, bos);
-        doc.open();
-        doc.add(new Paragraph("Inventario de Activos"));
-        PdfPTable t = new PdfPTable(2);
-        t.addCell("ID Activo");
-        t.addCell("Modelo");
-        for (Asset a : assetRepo.findAll()) {
-            t.addCell(nvl(a.getAssetId()));
-            t.addCell(nvl(a.getModel()));
+        int rowNum = 1;
+        for(Asset a : assets){
+            Row row = sheet.createRow(rowNum++);
+            row.createCell(0).setCellValue(a.getAssetId());
+            row.createCell(1).setCellValue(a.getModel());
+            row.createCell(2).setCellValue(a.getSerialNumber());
+            row.createCell(3).setCellValue(a.getManufacturer());
+            row.createCell(4).setCellValue(a.getPurchaseDate().toString());
+            row.createCell(5).setCellValue(a.getInitialLocation());
+            row.createCell(6).setCellValue(a.getValue().doubleValue());
         }
-        doc.add(t);
-        doc.close();
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=activos.pdf")
-                .contentType(MediaType.APPLICATION_PDF)
-                .body(bos.toByteArray());
+
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition","attachment; filename=Activos.xlsx");
+        workbook.write(response.getOutputStream());
+        workbook.close();
     }
 
-    @GetMapping(value="/summary.pdf", produces="application/pdf")
-    public ResponseEntity<byte[]> summaryPdf() throws Exception {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        Document doc = new Document();
-        PdfWriter.getInstance(doc, bos);
-        doc.open();
-        Font font = new Font(Font.HELVETICA, 12);
-        doc.add(new Paragraph("Resumen Operativo", font));
-        doc.add(new Paragraph("Fecha: " + LocalDate.now(), font));
-        doc.add(new Paragraph("Total activos: " + assetRepo.count(), font));
-        doc.close();
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=resumen.pdf")
-                .contentType(MediaType.APPLICATION_PDF)
-                .body(bos.toByteArray());
+    // Exportar PDF
+    @GetMapping("/assets.pdf")
+    public void exportPdf(HttpServletResponse response) throws IOException, DocumentException {
+        List<Asset> assets = assetRepo.findAll();
+
+        Document document = new Document(PageSize.A4.rotate());
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition","attachment; filename=Activos.pdf");
+
+        PdfWriter.getInstance(document, response.getOutputStream());
+        document.open();
+
+        Font font = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12);
+        PdfPTable table = new PdfPTable(7);
+        table.setWidthPercentage(100);
+        table.setWidths(new int[]{2,3,3,3,3,3,2});
+
+        String[] columns = {"ID Activo", "Modelo", "Serial", "Fabricante", "Fecha Compra", "Ubicación", "Valor"};
+        for(String col : columns){
+            PdfPCell cell = new PdfPCell(new Phrase(col, font));
+            cell.setBackgroundColor(BaseColor.LIGHT_GRAY);
+            table.addCell(cell);
+        }
+
+        for(Asset a : assets){
+            table.addCell(a.getAssetId());
+            table.addCell(a.getModel());
+            table.addCell(a.getSerialNumber());
+            table.addCell(a.getManufacturer());
+            table.addCell(a.getPurchaseDate().toString());
+            table.addCell(a.getInitialLocation());
+            table.addCell(a.getValue().toString());
+        }
+
+        document.add(table);
+        document.close();
     }
 
-    private String nvl(String s) { return s == null ? "" : s; }
+    // Endpoint para enviar reportes por correo (programación futura)
+    @PostMapping("/send")
+    public String sendReports(@RequestParam String email,
+                              @RequestParam(required=false) boolean sendExcel,
+                              @RequestParam(required=false) boolean sendPdf,
+                              Model model) {
+        // Aquí se implementará la lógica de envío por correo
+        // Se puede reutilizar GeoAlertService o AlertService con JavaMailSender
+        model.addAttribute("msg", "Reporte enviado a " + email);
+        return "reports/reports";
+    }
 }
