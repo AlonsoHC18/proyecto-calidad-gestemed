@@ -57,6 +57,7 @@ public class ImportController {
                         .build()) {
 
                     java.util.List<com.calidad.gestemed.domain.Asset> imported = new java.util.ArrayList<>();
+                    java.util.List<String> duplicates = new java.util.ArrayList<>();
                     String[] row;
                     boolean header = true;
                     int line = 0;
@@ -86,16 +87,19 @@ public class ImportController {
                         // Evitar duplicados por assetId
                         if (!assetRepo.existsByAssetId(a.getAssetId())) {
                             imported.add(assetRepo.save(a));
-                        }
+                        } else {
+                            duplicates.add(a.getAssetId());
                     }
 
                     model.addAttribute("count", imported.size());
+                    model.addAttribute("duplicates", duplicates);
                     return "import/success";
                 }
 
             } else if (name.endsWith(".xlsx")) {
                 // Tu ruta de Excel sigue igual
                 java.util.List<com.calidad.gestemed.domain.Asset> imported = new java.util.ArrayList<>();
+                java.util.List<String> duplicates = new java.util.ArrayList<>();
                 try (org.apache.poi.ss.usermodel.Workbook wb = org.apache.poi.ss.usermodel.WorkbookFactory.create(file.getInputStream())) {
                     org.apache.poi.ss.usermodel.Sheet s = wb.getSheetAt(0);
                     boolean header = true;
@@ -117,10 +121,12 @@ public class ImportController {
                         );
                         if (!assetRepo.existsByAssetId(a.getAssetId())) {
                             imported.add(assetRepo.save(a));
-                        }
+                        } else {
+                            duplicates.add(a.getAssetId());
                     }
                 }
                 model.addAttribute("count", /* imported.size() si lo guardaste */ 0);
+                model.addAttribute("duplicates", duplicates);
                 return "import/success";
             } else {
                 model.addAttribute("error", "Formato no soportado. Sube un .csv o .xlsx");
