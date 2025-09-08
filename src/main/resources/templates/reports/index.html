@@ -1,13 +1,55 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
-<head><meta charset="UTF-8"><title>Reportes</title></head>
-<body>
+<head>
+    <meta charset="UTF-8">
+    <title>Reportes</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="p-4">
+
 <h2>Reportes</h2>
-<ul>
+
+<ul class="mb-4">
     <li><a href="/reports/assets.xlsx">Exportar activos (Excel)</a></li>
     <li><a href="/reports/assets.pdf">Inventario (PDF)</a></li>
     <li><a href="/reports/summary.pdf">Resumen (PDF)</a></li>
 </ul>
+
+<h3>Envío automático de reportes</h3>
+
+<div th:if="${error}" class="alert alert-danger" th:text="${error}"></div>
+<div th:if="${msg}" class="alert alert-success" th:text="${msg}"></div>
+
+<form th:action="@{/reports/send}" method="post" class="mb-4">
+    <div class="mb-3">
+        <label for="email" class="form-label">Correo electrónico</label>
+        <input type="email" class="form-control" id="email" name="email" placeholder="usuario@dominio.com" required>
+    </div>
+
+    <div class="mb-3 form-check">
+        <input type="checkbox" class="form-check-input" id="sendExcel" name="sendExcel">
+        <label class="form-check-label" for="sendExcel">Enviar Excel</label>
+    </div>
+
+    <div class="mb-3 form-check">
+        <input type="checkbox" class="form-check-input" id="sendPdf" name="sendPdf">
+        <label class="form-check-label" for="sendPdf">Enviar PDF</label>
+    </div>
+
+    <div class="mb-3">
+        <label for="intervalDays" class="form-label">Frecuencia de envío (opcional)</label>
+        <select class="form-select" id="intervalDays" name="intervalDays">
+            <option value="">Único</option>
+            <option value="15">Cada 15 días</option>
+            <option value="30">Cada 30 días</option>
+        </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Enviar Reporte</button>
+</form>
+
 <p><a href="/">Inicio</a></p>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
