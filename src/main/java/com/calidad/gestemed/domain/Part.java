@@ -1,8 +1,5 @@
 package com.calidad.gestemed.domain;
 
-// clase para modelar una pieza de reparación
-// domain/Part.java
-
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -18,5 +15,7 @@ public class Part {
     // modelos aplicables (MVP: texto)
     @Column(length=1000)
     private String applicableModels;
-}
 
+    // correo de notificación
+    private String notificationEmail;
+}
