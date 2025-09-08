@@ -44,6 +44,14 @@
                                 <input id="clientName" name="clientName" type="text" class="form-control" placeholder="Nombre completo" required>
                             </div>
                             <div class="col-md-6">
+                                <label for="clientEmail" class="form-label">Correo Electrónico del Cliente</label>
+                                <input id="clientEmail" name="clientEmail" type="email" class="form-control" placeholder="correo@cliente.com" required>
+                            </div>
+
+                            <!-- Mensaje de error de correo -->
+                            <div th:if="${error}" class="alert alert-danger mt-2" th:text="${error}"></div>
+
+                            <div class="col-md-6">
                                 <label for="startDate" class="form-label">Fecha de Inicio</label>
                                 <input id="startDate" name="startDate" type="date" class="form-control" required>
                             </div>
