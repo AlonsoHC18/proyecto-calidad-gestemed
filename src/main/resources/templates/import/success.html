@@ -32,8 +32,18 @@
                 <div class="card-body p-5">
                     <h4 class="card-title fw-bold mb-3">¡Éxito!</h4>
                     <p class="card-text fs-5">
-                        Se han importado exitosamente <b th:text="${count}" class="text-success">0</b> registros a la base de datos.
+                        Se han importado exitosamente 
+                        <b th:text="${count}" class="text-success">0</b> registros a la base de datos.
                     </p>
+
+                    <!-- 🔹 Mostrar duplicados si existen -->
+                    <div th:if="${duplicates != null and !duplicates.isEmpty()}" class="alert alert-warning mt-4">
+                        <h5><i class="bi bi-exclamation-triangle-fill me-2"></i>Registros duplicados</h5>
+                        <p>Los siguientes IDs ya existían y no se importaron:</p>
+                        <ul class="list-group">
+                            <li class="list-group-item" th:each="id : ${duplicates}" th:text="${id}"></li>
+                        </ul>
+                    </div>
                 </div>
                 <div class="card-footer bg-light py-3 d-flex justify-content-center gap-2">
                     <a href="/assets" class="btn btn-primary"><i class="bi bi-box-seam me-2"></i>Ver activos</a>
