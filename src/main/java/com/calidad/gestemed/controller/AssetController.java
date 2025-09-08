@@ -86,11 +86,16 @@ public class AssetController {
         asset.setPhotoPaths(photosUrls);
 
         // Creamos el activo registrando quién lo creó (si no hay auth, usamos 'admin' por defecto)
-        assetService.create(asset, (auth!=null?auth.getName():"admin"));
-
-        // Redirigimos a la lista con un query param de estado
-        return "redirect:/assets?created";
-    }
+        try {
+            assetService.create(asset, (auth != null ? auth.getName() : "admin"));
+            return "redirect:/assets?created";
+        } catch (com.calidad.gestemed.exception.AssetAlreadyExistsException e) {
+            // Pasamos el mensaje de error a la vista
+            model.addAttribute("error", e.getMessage());
+            // Devolvemos al formulario con el objeto asset para que no pierda los datos ingresados
+            model.addAttribute("asset", asset);
+            return "assets/new";
+        }
 
     // si visitan /{id}/movements, se redirige al historial filtrable de movimientos de los activos */
     @GetMapping("/{id}/movements")
