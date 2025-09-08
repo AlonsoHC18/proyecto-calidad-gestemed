@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<!DOCTYPE html>
 <html lang="es" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
@@ -18,7 +17,7 @@
         }
         .table-container {
             border-radius: 10px;
-            overflow: hidden; /* Esto ayuda a que los bordes redondeados se apliquen a la tabla */
+            overflow: hidden; 
             box-shadow: 0 4px 8px rgba(0,0,0,.08);
             background-color: white;
         }
@@ -31,6 +30,14 @@
         }
         .action-buttons a {
             margin-right: 0.5rem;
+        }
+        .client-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .client-email {
+            font-size: 0.85rem;
+            color: #6c757d;
         }
     </style>
 </head>
@@ -65,14 +72,19 @@
             <tbody>
             <tr th:each="c : ${contracts}">
                 <td th:text="${c.code}"></td>
-                <td th:text="${c.clientName}"></td>
+                <td>
+                    <div class="client-info">
+                        <span th:text="${c.clientName}"></span>
+                        <span class="client-email" th:text="${c.clientEmail}"></span>
+                    </div>
+                </td>
                 <td th:text="${c.startDate}"></td>
                 <td th:text="${c.endDate}"></td>
                 <td th:text="${c.alertDays}"></td>
                 <td>
-                        <span th:classappend="${c.status eq 'VIGENTE'} ? 'bg-success' : 'bg-warning'"
-                              class="badge rounded-pill status-badge"
-                              th:text="${c.status}"></span>
+                    <span th:classappend="${c.status eq 'VIGENTE'} ? 'bg-success' : 'bg-warning'"
+                          class="badge rounded-pill status-badge"
+                          th:text="${c.status}"></span>
                 </td>
                 <td>
                     <span th:each="a : ${c.assets}" class="badge bg-light text-dark me-1" th:text="${a.assetId}"></span>
