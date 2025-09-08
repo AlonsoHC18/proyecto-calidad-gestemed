@@ -5,86 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mover Activo</title>
 
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f4f7f6;
-            color: #333;
-        }
-        .container {
-            max-width: 700px;
-            margin: 0 auto;
-            background-color: #ffffff;
-            padding: 25px;
-            border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-        }
-        h2 {
-            color: #0056b3;
-            border-bottom: 2px solid #eeeeee;
-            padding-bottom: 10px;
-            margin-top: 0;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-        }
-        input[type="text"] {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-sizing: border-box; /* Asegura que el padding no afecte el ancho total */
-        }
-        input[readonly] {
-            background-color: #e9ecef;
-            cursor: not-allowed;
-        }
-        /* 3. Estilo para el contenedor del mapa */
-        #map {
-            height: 350px;
-            width: 100%;
-            border-radius: 5px;
-            margin-top: 10px;
-            border: 1px solid #ccc;
-        }
-        .buttons {
-            margin-top: 20px;
-            display: flex;
-            gap: 10px; /* Espacio entre botones */
-            flex-wrap: wrap;
-        }
-        button, a {
-            padding: 12px 20px;
-            border: none;
-            border-radius: 5px;
-            text-decoration: none;
-            font-size: 16px;
-            cursor: pointer;
-            text-align: center;
-        }
-        button[type="submit"] {
-            background-color: #007bff;
-            color: white;
-        }
-        a {
-            background-color: #6c757d;
-            color: white;
-        }
-        a.back {
-             background-color: #f8f9fa;
-             color: #333;
-             border: 1px solid #ccc;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin:0; padding:20px; background:#f4f7f6; color:#333;}
+        .container { max-width:700px; margin:0 auto; background:#fff; padding:25px; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+        h2 { color:#0056b3; border-bottom:2px solid #eee; padding-bottom:10px; margin-top:0;}
+        .form-group { margin-bottom:20px; }
+        label { display:block; margin-bottom:8px; font-weight:600; }
+        input[type="text"], select { width:100%; padding:10px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box;}
+        input[readonly] { background:#e9ecef; cursor:not-allowed;}
+        #map { height:350px; width:100%; border-radius:5px; margin-top:10px; border:1px solid #ccc;}
+        #signatureCanvas { border:1px solid #ccc; border-radius:4px; margin-top:5px; }
+        .buttons { margin-top:20px; display:flex; gap:10px; flex-wrap:wrap;}
+        button, a { padding:12px 20px; border:none; border-radius:5px; text-decoration:none; font-size:16px; cursor:pointer; text-align:center; }
+        button[type="submit"] { background:#007bff; color:white; }
+        a { background:#6c757d; color:white; }
+        a.back { background:#f8f9fa; color:#333; border:1px solid #ccc; }
     </style>
 </head>
 <body>
@@ -119,6 +59,22 @@
             <input type="text" id="note" name="note">
         </div>
 
+        <div class="form-group">
+            <label for="movementType">Tipo de movimiento:</label>
+            <select id="movementType" name="movementType" required>
+                <option value="">-- Seleccione --</option>
+                <option value="ENTREGA">ENTREGA</option>
+                <option value="DEVOLUCION">DEVOLUCIÓN</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Firma (Opcional):</label>
+            <canvas id="signatureCanvas" width="400" height="150"></canvas>
+            <button type="button" id="clearSignature">Limpiar Firma</button>
+            <input type="hidden" name="signatureDataUrl" id="signatureDataUrl">
+        </div>
+
         <div class="buttons">
             <button type="submit">Registrar Movimiento</button>
             <a th:href="@{'/assets/' + ${asset.id} + '/history'}">Ver Historial</a>
@@ -128,38 +84,39 @@
 </div>
 
 <script>
-    // Inicializar el mapa y centrarlo en Costa Rica.
-    // El primer argumento son las coordenadas [lat, lon], el segundo es el nivel de zoom.
+    // Mapa
     const map = L.map('map').setView([9.9394, -84.0445], 9);
-
-    // Añadir una capa de mapa base de OpenStreetMap (es gratuita)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
-
-    // Variable para guardar el marcador
     let marker;
-
-    // Obtener los campos de input de latitud y longitud
     const latInput = document.getElementById('toLocationLatitude');
     const lonInput = document.getElementById('toLocationLongitude');
-
-    // Función que se ejecuta cuando el usuario hace clic en el mapa
     map.on('click', function(e) {
-        const lat = e.latlng.lat;
-        const lon = e.latlng.lng;
+        latInput.value = e.latlng.lat.toFixed(6);
+        lonInput.value = e.latlng.lng.toFixed(6);
+        if (marker) marker.setLatLng(e.latlng);
+        else marker = L.marker(e.latlng).addTo(map);
+    });
 
-        // Actualizar el valor de los inputs del formulario con 6 decimales de precisión
-        latInput.value = lat.toFixed(6);
-        lonInput.value = lon.toFixed(6);
+    // Firma
+    const canvas = document.getElementById('signatureCanvas');
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
 
-        // Si ya existe un marcador, simplemente moverlo a la nueva posición
-        if (marker) {
-            marker.setLatLng(e.latlng);
-        } else {
-            // Si no existe, crear un nuevo marcador y añadirlo al mapa
-            marker = L.marker(e.latlng).addTo(map);
-        }
+    canvas.addEventListener('mousedown', e => { drawing = true; ctx.moveTo(e.offsetX, e.offsetY); });
+    canvas.addEventListener('mousemove', e => { if(drawing) ctx.lineTo(e.offsetX, e.offsetY); if(drawing) ctx.stroke(); });
+    canvas.addEventListener('mouseup', () => drawing=false);
+    canvas.addEventListener('mouseleave', () => drawing=false);
+
+    document.getElementById('clearSignature').addEventListener('click', () => {
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+    });
+
+    // Enviar firma al backend
+    document.querySelector('form').addEventListener('submit', e => {
+        const dataUrl = canvas.toDataURL('image/png');
+        document.getElementById('signatureDataUrl').value = dataUrl;
     });
 </script>
 
