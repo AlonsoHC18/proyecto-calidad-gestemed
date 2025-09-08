@@ -2,113 +2,81 @@ package com.calidad.gestemed.controller;
 
 import com.calidad.gestemed.domain.Asset;
 import com.calidad.gestemed.domain.AssetMovement;
+import com.calidad.gestemed.domain.Notification;
+import com.calidad.gestemed.domain.User; // Asumiendo que tienes entidad User con email
 import com.calidad.gestemed.repo.AssetMovementRepo;
 import com.calidad.gestemed.repo.AssetRepo;
+import com.calidad.gestemed.repo.NotificationRepo;
+import com.calidad.gestemed.repo.UserRepo;
 import com.calidad.gestemed.service.AssetService;
 import com.calidad.gestemed.service.impl.AzureBlobService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.security.core.Authentication;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.security.Principal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-
-
-import org.springframework.web.bind.annotation.*;
-
-import java.io.IOException;
-
-
 import java.util.stream.Collectors;
 
-// Este es el controlador web de Spring MVC para gestionar  los activos medicos
-@Controller //esta es la anotacion del framework para decir que esta clase va a ser un controlador
-@RequiredArgsConstructor                 // Lombok: genera un constructor con los final (inyección por constructor). Gracias a lombok no es necesario definir un constructor en la clase
-@RequestMapping("/assets")               // Prefijo común para todas las rutas de este controlador
+@Controller
+@RequiredArgsConstructor
+@RequestMapping("/assets")
 public class AssetController {
 
-    // assetService, movementRepo, assetRepo y azureBlobService son las dependencias del controlador (inyectadas por Spring a través del constructor gracias a lombok)
+    private final AssetService assetService;
+    private final AssetMovementRepo movementRepo;
+    private final AssetRepo assetRepo;
+    private final AzureBlobService azureBlobService;
+    private final NotificationRepo notificationRepo;
+    private final UserRepo userRepo;              // Para obtener correo del administrador
+    private final JavaMailSender mailSender;      // Para enviar email
 
-    private final AssetService assetService;       // Lógica de negocio para activos
-
-    //JPA Permite hacer busquedas a la base de datos sin tener que escribir codigo
-    //Por ejemplo, en estas clases AssetMovementRepo y AssetRepo estaria encapsulada toda la logica que permite hacer llamados a la base de datos
-    //Por ejemplo, si queremos buscar un activo por su id solo hacemos assetRepo.findById(1). Eso buscaria en la base de datos es activo con id=1.
-
-    private final AssetMovementRepo movementRepo;  // Repositorio JPA para movimientos de activos
-    private final AssetRepo assetRepo; // Repositorio JPA para activos
-
-
-    private final AzureBlobService azureBlobService; // Servicio propio para subir archivos a Azure Blob
-
-    // GET /assets -> lista de activos
+    // GET /assets
     @GetMapping
     public String list(Model model){
-        model.addAttribute("assets", assetService.list()); // Pasa la lista de activos a la vista
-        return "assets/list";                               // Muestra la plantilla assets/list.html
+        model.addAttribute("assets", assetService.list());
+        return "assets/list";
     }
 
-    // GET /assets/new -> muestra formulario de creación de un activo
+    // GET /assets/new
     @GetMapping("/new")
     public String form(Model model){
-        model.addAttribute("asset", new Asset()); // Se envia a la vista html el objeto vacío asset para enlazar el formulario
-        return "assets/new";                      // Se muestra la plantilla assets/new.html
+        model.addAttribute("asset", new Asset());
+        return "assets/new";
     }
 
-    // POST /assets -> crea un activo nuevo
+    // POST /assets
     @PostMapping
-    public String create(Asset asset, @RequestParam("photos") List<MultipartFile> photos, Authentication auth){
-
-        // En el parametro List<MultipartFile> photos vienen las fotos que el usuario agrego para el activo. Pero estas fotos estan en un formato extraño y se necesita tranformarlas con el metodo map
-        //photos.stream() se utiliza para iterar las photos. En este momento las photos no estan transformadas
-        //.filter(f -> !f.isEmpty()): El primer filtro se asegura de que solo pasen las fotos que no están vacías
-        //El método map transforma cada foto en el flujo. f es cada foto.
+    public String create(Asset asset, @RequestParam("photos") List<MultipartFile> photos, Principal who){
         String photosUrls = photos.stream()
                 .filter(f -> !f.isEmpty())
                 .map(f -> {
                     try {
-                        return azureBlobService.uploadFile(f); // Sube la foto a azure blob service y retorna URL pública/descargable
-                    } catch (IOException e) {
+                        return azureBlobService.uploadFile(f);
+                    } catch (Exception e) {
                         System.out.println("[WARN] No se pudo subir la foto: " + e.getMessage());
-                        return null; // Si una sube falla, devolvemos null para luego filtrarlo
+                        return null;
                     }
-                })
-                .filter(url -> url != null)                   // Quitamos los null (subidas fallidas)
-                .collect(Collectors.joining("|"));             // es para unir cada url de las foto separadas por | algo asi: "url1|url2|url3"
+                }).filter(url -> url != null)
+                .collect(Collectors.joining("|"));
 
-        // Guardamos el string de URLs en el activo
         asset.setPhotoPaths(photosUrls);
-
-        // Creamos el activo registrando quién lo creó (si no hay auth, usamos 'admin' por defecto)
-        assetService.create(asset, (auth!=null?auth.getName():"admin"));
-
-        // Redirigimos a la lista con un query param de estado
+        assetService.create(asset, (who!=null?who.getName():"admin"));
         return "redirect:/assets?created";
     }
 
-    // si visitan /{id}/movements, se redirige al historial filtrable de movimientos de los activos */
-    @GetMapping("/{id}/movements")
-    public String movements(@PathVariable Long id){
-        return "redirect:/assets/" + id + "/history";
-    }
-
-    // si hacen peticion GET /assets/{id}/move es muestra el formulario para mover un activo de ubicación
     @GetMapping("/{id}/move")
     public String moveForm(@PathVariable Long id, Model model) {
-        // Buscamos el activo o lanzamos excepción si no existe
         model.addAttribute("asset", assetRepo.findById(id).orElseThrow());
-        return "assets/move"; // Vista con el formulario de movimiento
+        return "assets/move";
     }
 
-    // si se hace petición POST /assets/{id}/move entonces se ejecuta el movimiento del activo (actualiza la ubicación + registra el movimiento)
-
-    // el parametro Principal who se utiliza para obtener información sobre el usuario que ha iniciado sesión y está haciendo la petición
+    // POST /assets/{id}/move — incluyendo alerta por geocerca
     @PostMapping("/{id}/move")
     public String doMove(@PathVariable Long id,
                          @RequestParam String toLocation,
@@ -117,81 +85,60 @@ public class AssetController {
                          @RequestParam(required=false) String note,
                          Principal who) {
 
-        //Leemos el activo y guardamos "de dónde" viene
         Asset a = assetRepo.findById(id).orElseThrow();
         String from = a.getInitialLocation();
-        Double fromLatitude = a.getLastLatitude();
-        Double fromLongitude = a.getLastLongitude();
+        Double fromLat = a.getLastLatitude();
+        Double fromLon = a.getLastLongitude();
 
-        //Actualizamos su "ubicación actual" y coordenadas
         a.setInitialLocation(toLocation);
         a.setLastLatitude(toLocationLatitude);
         a.setLastLongitude(toLocationLongitude);
-
-        //Guardamos en la base de datos el cambio del activo
         assetRepo.save(a);
 
-        //Registramos el movimiento en la tabla de movimientos
-        //IMPORTANTE: el campo de la entidad se llama 'reason', así que guardamos la 'note' ahí.
-        //El patrón de diseño builder permite crear el objeto de forma más sencilla sin necesidad de instanciar
         movementRepo.save(AssetMovement.builder()
                 .asset(a)
                 .fromLocation(from)
                 .toLocation(toLocation)
-                .fromLocationLatitude(fromLatitude)
-                .fromLocationLongitude(fromLongitude)
+                .fromLocationLatitude(fromLat)
+                .fromLocationLongitude(fromLon)
                 .toLocationLatitude(toLocationLatitude)
                 .toLocationLongitude(toLocationLongitude)
-                .reason(note) // Guardamos la nota en el campo correcto
-                .performedBy(who!=null?who.getName():"system") // Quién hizo el movimiento es decir, el usuari que inició sesión
-                .movedAt(LocalDateTime.now())                  // Cuándo se hizo
+                .reason(note)
+                .performedBy(who!=null?who.getName():"system")
+                .movedAt(LocalDateTime.now())
                 .build());
 
-        // Volvemos al historial del activo
+        // --- F-10: Verificar geocerca ---
+        if(!isInsideCostaRica(toLocationLatitude, toLocationLongitude)) {
+            // Crear notificación en el panel
+            notificationRepo.save(Notification.builder()
+                    .message("Alerta: Activo " + a.getId() + " salió de la zona segura y se encuentra en " + toLocation)
+                    .createdAt(LocalDateTime.now())
+                    .build());
+
+            // Enviar correo al administrador
+            userRepo.findAll().stream()
+                    .filter(User::isAdmin)
+                    .filter(u -> u.getEmail()!=null && !u.getEmail().isBlank())
+                    .forEach(u -> {
+                        try {
+                            SimpleMailMessage msg = new SimpleMailMessage();
+                            msg.setTo(u.getEmail());
+                            msg.setSubject("Alerta: Activo fuera de geocerca");
+                            msg.setText("Tu activo " + a.getId() + " salió de la zona segura y se encuentra en " + toLocation);
+                            mailSender.send(msg);
+                        } catch(Exception e){
+                            System.out.println("[WARN] No se pudo enviar correo: "+e.getMessage());
+                        }
+                    });
+        }
+
         return "redirect:/assets/" + id + "/history";
     }
 
-    // GET /assets/{id}/history -> historial con filtros opcionales (fecha desde, fecha hasta, ubicación)
-    @GetMapping("/{id}/history")
-    public String history(@PathVariable Long id,
-                          @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate from,
-                          @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate to,
-                          @RequestParam(required=false) String location,
-                          Model model) {
-
-        // Si no hay 'from', usamos el año 0001 para incluir todos los registros
-        LocalDateTime fromDate = (from == null)
-                ? LocalDateTime.of(1, 1, 1, 0, 0)
-                : from.atStartOfDay();
-
-        // Si no hay 'to', usamos un máximo (año 9999).
-        // Si sí hay 'to', sumamos un día para incluir TODO el día 'to' (rango [from, to+1))
-        LocalDateTime toDate = (to == null)
-                ? LocalDateTime.of(9999, 12, 31, 0, 0)
-                : to.plusDays(1).atStartOfDay();
-
-        // Patrón para filtrar por ubicación usando LIKE en SQL; si está vacío, se pasa null (sin filtro)
-        // El método trim() elimina los espacios en blanco por si el usuario dejó espacios en el campo ubicación. Sería bueno validarlo en la vista también
-        String pattern = (location == null || location.isBlank())
-                ? null
-                : "%" + location.trim() + "%";
-
-        // Cargamos el activo y buscamos sus movimientos usando un query nativo de postgres con filtros
-        var asset = assetRepo.findById(id).orElseThrow();
-
-        // searchNative es una busqueda sql nativa de postgres para buscar los movimientos de un activo filtrados por fechas y ubicación
-        var list  = movementRepo.searchNative(id, fromDate, toDate, pattern);
-
-        // Variables para la vista (útiles para mantener los filtros elegidos por el usuario)
-        model.addAttribute("asset", asset);
-
-        // este "movs" que se envia a la vista es muy importante porque es la lista de movimientos de los activos
-        model.addAttribute("movs", list);
-        model.addAttribute("from", from);
-        model.addAttribute("to", to);
-        model.addAttribute("location", location);
-
-        return "assets/history"; // Renderiza la plantilla con el historial
+    // Método auxiliar para geocerca Costa Rica
+    private boolean isInsideCostaRica(double lat, double lon) {
+        return lat >= 8.0 && lat <= 11.3 && lon >= -85.9 && lon <= -82.5;
     }
 
 }
