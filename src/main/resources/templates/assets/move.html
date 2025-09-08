@@ -9,82 +9,20 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f4f7f6;
-            color: #333;
-        }
-        .container {
-            max-width: 700px;
-            margin: 0 auto;
-            background-color: #ffffff;
-            padding: 25px;
-            border-radius: 8px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-        }
-        h2 {
-            color: #0056b3;
-            border-bottom: 2px solid #eeeeee;
-            padding-bottom: 10px;
-            margin-top: 0;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 600;
-        }
-        input[type="text"] {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            box-sizing: border-box; /* Asegura que el padding no afecte el ancho total */
-        }
-        input[readonly] {
-            background-color: #e9ecef;
-            cursor: not-allowed;
-        }
-        /* 3. Estilo para el contenedor del mapa */
-        #map {
-            height: 350px;
-            width: 100%;
-            border-radius: 5px;
-            margin-top: 10px;
-            border: 1px solid #ccc;
-        }
-        .buttons {
-            margin-top: 20px;
-            display: flex;
-            gap: 10px; /* Espacio entre botones */
-            flex-wrap: wrap;
-        }
-        button, a {
-            padding: 12px 20px;
-            border: none;
-            border-radius: 5px;
-            text-decoration: none;
-            font-size: 16px;
-            cursor: pointer;
-            text-align: center;
-        }
-        button[type="submit"] {
-            background-color: #007bff;
-            color: white;
-        }
-        a {
-            background-color: #6c757d;
-            color: white;
-        }
-        a.back {
-             background-color: #f8f9fa;
-             color: #333;
-             border: 1px solid #ccc;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin:0; padding:20px; background:#f4f7f6; color:#333; }
+        .container { max-width: 700px; margin:0 auto; background:#fff; padding:25px; border-radius:8px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+        h2 { color:#0056b3; border-bottom:2px solid #eee; padding-bottom:10px; margin-top:0;}
+        .form-group { margin-bottom:20px; }
+        label { display:block; margin-bottom:8px; font-weight:600; }
+        input[type="text"], select { width:100%; padding:10px; border:1px solid #ccc; border-radius:4px; box-sizing:border-box; }
+        input[readonly] { background:#e9ecef; cursor:not-allowed; }
+        #map { height: 350px; width:100%; border-radius:5px; margin-top:10px; border:1px solid #ccc; }
+        canvas { border:1px solid #ccc; border-radius:5px; width:100%; height:200px; margin-top:10px; }
+        .buttons { margin-top:20px; display:flex; gap:10px; flex-wrap:wrap; }
+        button, a { padding:12px 20px; border:none; border-radius:5px; text-decoration:none; font-size:16px; cursor:pointer; text-align:center; }
+        button[type="submit"] { background:#007bff; color:white; }
+        a { background:#6c757d; color:white; }
+        a.back { background:#f8f9fa; color:#333; border:1px solid #ccc; }
     </style>
 </head>
 <body>
@@ -92,7 +30,7 @@
 <div class="container">
     <h2>Mover activo: <span th:text="${asset.assetId}">ID_DEL_ACTIVO</span></h2>
 
-    <form th:action="@{'/assets/' + ${asset.id} + '/move'}" method="post">
+    <form th:action="@{'/assets/' + ${asset.id} + '/move'}" method="post" id="moveForm">
 
         <div class="form-group">
             <label for="toLocation">Nueva ubicación (Lugar/Referencia):</label>
@@ -115,8 +53,24 @@
         </div>
 
         <div class="form-group">
+            <label for="movementType">Tipo de Movimiento:</label>
+            <select id="movementType" name="movementType" required>
+                <option value="" disabled selected>Seleccione...</option>
+                <option value="ENTREGA">ENTREGA</option>
+                <option value="DEVOLUCION">DEVOLUCIÓN</option>
+            </select>
+        </div>
+
+        <div class="form-group">
             <label for="note">Nota (Opcional):</label>
             <input type="text" id="note" name="note">
+        </div>
+
+        <div class="form-group">
+            <label>Firma del responsable:</label>
+            <canvas id="signaturePad"></canvas>
+            <button type="button" id="clearSignature" style="margin-top:10px;">Borrar Firma</button>
+            <input type="hidden" name="signatureDataUrl" id="signatureDataUrl">
         </div>
 
         <div class="buttons">
@@ -127,38 +81,51 @@
     </form>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/signature_pad@4.0.0/dist/signature_pad.umd.min.js"></script>
 <script>
-    // Inicializar el mapa y centrarlo en Costa Rica.
-    // El primer argumento son las coordenadas [lat, lon], el segundo es el nivel de zoom.
+    // Inicializar Leaflet
     const map = L.map('map').setView([9.9394, -84.0445], 9);
-
-    // Añadir una capa de mapa base de OpenStreetMap (es gratuita)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
-    // Variable para guardar el marcador
     let marker;
-
-    // Obtener los campos de input de latitud y longitud
     const latInput = document.getElementById('toLocationLatitude');
     const lonInput = document.getElementById('toLocationLongitude');
 
-    // Función que se ejecuta cuando el usuario hace clic en el mapa
     map.on('click', function(e) {
         const lat = e.latlng.lat;
         const lon = e.latlng.lng;
-
-        // Actualizar el valor de los inputs del formulario con 6 decimales de precisión
         latInput.value = lat.toFixed(6);
         lonInput.value = lon.toFixed(6);
 
-        // Si ya existe un marcador, simplemente moverlo a la nueva posición
-        if (marker) {
-            marker.setLatLng(e.latlng);
-        } else {
-            // Si no existe, crear un nuevo marcador y añadirlo al mapa
-            marker = L.marker(e.latlng).addTo(map);
+        if(marker) marker.setLatLng(e.latlng);
+        else marker = L.marker(e.latlng).addTo(map);
+    });
+
+    // Inicializar Signature Pad
+    const canvas = document.getElementById('signaturePad');
+    const signaturePad = new SignaturePad(canvas);
+
+    // Ajuste de tamaño del canvas
+    function resizeCanvas() {
+        const ratio = Math.max(window.devicePixelRatio || 1, 1);
+        canvas.width = canvas.offsetWidth * ratio;
+        canvas.height = canvas.offsetHeight * ratio;
+        canvas.getContext("2d").scale(ratio, ratio);
+        signaturePad.clear();
+    }
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    document.getElementById('clearSignature').addEventListener('click', function() {
+        signaturePad.clear();
+    });
+
+    // Antes de enviar, pasar la firma al hidden input
+    document.getElementById('moveForm').addEventListener('submit', function(e) {
+        if (!signaturePad.isEmpty()) {
+            document.getElementById('signatureDataUrl').value = signaturePad.toDataURL();
         }
     });
 </script>
