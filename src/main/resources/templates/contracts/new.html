@@ -43,6 +43,15 @@
                                 <label for="clientName" class="form-label">Nombre del Cliente</label>
                                 <input id="clientName" name="clientName" type="text" class="form-control" placeholder="Nombre completo" required>
                             </div>
+                            <!-- NUEVO CAMPO: correo electrónico -->
+                            <div class="col-md-6">
+                                <label for="clientEmail" class="form-label">Correo Electrónico</label>
+                                <input id="clientEmail" name="clientEmail" type="email" 
+                                       class="form-control" placeholder="correo@ejemplo.com" 
+                                       pattern="[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$" 
+                                       required>
+                                <div class="form-text">Se enviarán notificaciones a este correo.</div>
+                            </div>
                             <div class="col-md-6">
                                 <label for="startDate" class="form-label">Fecha de Inicio</label>
                                 <input id="startDate" name="startDate" type="date" class="form-control" required>
