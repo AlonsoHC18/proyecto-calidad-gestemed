@@ -23,7 +23,7 @@ public class AssetServiceImpl implements AssetService {
     @Override
     public Asset create(Asset a, String createdBy) {
         if (assetRepo.existsByAssetId(a.getAssetId()))
-            throw new IllegalArgumentException("ID único ya existe");
+            throw new AssetAlreadyExistsException(a.getAssetId());
         a.setCreatedAt(LocalDateTime.now());
         a.setLastGpsAt(LocalDateTime.now());
         a.setCreatedBy(createdBy);
