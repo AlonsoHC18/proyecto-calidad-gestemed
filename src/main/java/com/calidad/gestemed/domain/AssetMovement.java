@@ -1,15 +1,17 @@
 // domain/AssetMovement.java
 
-// Clase para modelar el movimiento de un activo médico
-
 package com.calidad.gestemed.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.time.LocalDateTime;
 
-@Entity @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Entity
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 @Table(name="asset_movements",
         indexes = {
                 @Index(name="idx_mov_asset", columnList="asset_id"),
@@ -17,21 +19,25 @@ import java.time.LocalDateTime;
         })
 public class AssetMovement {
 
-    @Id @GeneratedValue(strategy=GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy=GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(optional=false) private Asset asset;
+    @ManyToOne(optional=false)
+    private Asset asset;
 
     private LocalDateTime movedAt;
 
-    @Column(length=200) private String fromLocation;
-    @Column(length=200) private String toLocation;
+    @Column(length=200)
+    private String fromLocation;
 
+    @Column(length=200)
+    private String toLocation;
 
     @Column(name = "from_location_latitude")
     private Double fromLocationLatitude;
 
-    @Column(name = "from_location_Longitude")
+    @Column(name = "from_location_longitude")
     private Double fromLocationLongitude;
 
     @Column(name = "to_location_latitude")
@@ -40,6 +46,16 @@ public class AssetMovement {
     @Column(name = "to_location_longitude")
     private Double toLocationLongitude;
 
-    @Column(length=100) private String reason;       // p.ej. "Traslado", "Mantenimiento", etc.
-    @Column(length=100) private String performedBy;  // username
+    @Column(length=100)
+    private String reason;
+
+    @Column(length=100)
+    private String performedBy;
+
+    // ----------- NUEVOS CAMPOS PARA F-05 -----------
+    @Enumerated(EnumType.STRING)
+    private MovementType movementType;  // ENTREGA o DEVOLUCION
+
+    @Column(length=4000)
+    private String signaturePath;       // URL de la firma subida a Azure Blob
 }
