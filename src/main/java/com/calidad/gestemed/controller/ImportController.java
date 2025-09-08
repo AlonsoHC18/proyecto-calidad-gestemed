@@ -1,34 +1,45 @@
 package com.calidad.gestemed.controller;
 
-// controller/ImportController.java
-
 import com.calidad.gestemed.domain.Asset;
+import com.calidad.gestemed.domain.ImportLog;
 import com.calidad.gestemed.repo.AssetRepo;
+import com.calidad.gestemed.repo.ImportLogRepo;
 import com.opencsv.CSVReader;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
-// Este controlador maneja la carga de archivos CSV y XLSX para la importación de datos.
-// Incluye lógica estándar para detectar formatos, leer el contenido,
-// y mapear las filas a objetos de la base de datos, evitando duplicados.
-// Es una plantilla común para procesos de importación.
+import com.itextpdf.kernel.pdf.PdfWriter;
+import com.itextpdf.kernel.pdf.PdfDocument;
+import com.itextpdf.layout.Document;
+import com.itextpdf.layout.element.Paragraph;
+import com.itextpdf.layout.element.Table;
 
-@Controller @RequiredArgsConstructor
+@Controller
+@RequiredArgsConstructor
 @RequestMapping("/import")
 public class ImportController {
-    private final AssetRepo assetRepo;
 
-    @GetMapping public String form() { return "import/form"; }
+    private final AssetRepo assetRepo;
+    private final ImportLogRepo importLogRepo;
+
+    @GetMapping
+    public String form() {
+        return "import/form";
+    }
 
     @PostMapping
     public String upload(@RequestParam("file") MultipartFile file, Model model) {
@@ -40,33 +51,33 @@ public class ImportController {
 
             String name = (file.getOriginalFilename() == null ? "" : file.getOriginalFilename()).toLowerCase();
 
+            // Contadores y detalles
+            int insertedCount = 0;
+            int duplicateCount = 0;
+            int errorCount = 0;
+            List<String> details = new ArrayList<>();
+            List<String> duplicates = new ArrayList<>();
+
             if (name.endsWith(".csv")) {
-                // Leemos todo el contenido para detectar separador y quitar caracteres especiales
-                String content = new String(file.getBytes(), java.nio.charset.StandardCharsets.UTF_8);
-                content = content.replace("\uFEFF", ""); // quita BOM si existe
+                String content = new String(file.getBytes(), java.nio.charset.StandardCharsets.UTF_8)
+                        .replace("\uFEFF", "");
 
-                char sep = detectSeparator(content); // ',' o ';'
+                char sep = detectSeparator(content);
 
-                // OpenCSV con separador detectado
                 com.opencsv.CSVParser parser = new com.opencsv.CSVParserBuilder()
                         .withSeparator(sep)
                         .build();
 
-                try (com.opencsv.CSVReader r = new com.opencsv.CSVReaderBuilder(new java.io.StringReader(content))
-                        .withCSVParser(parser)
-                        .build()) {
-
-                    java.util.List<com.calidad.gestemed.domain.Asset> imported = new java.util.ArrayList<>();
+                try (CSVReader r = new CSVReader(new java.io.StringReader(content))) {
                     String[] row;
                     boolean header = true;
                     int line = 0;
 
                     while ((row = r.readNext()) != null) {
                         line++;
-
-                        if (header) { header = false; continue; }          // salta encabezado
-                        if (row.length == 0) continue;                      // fila completamente vacía
-                        if (row.length == 1 && (row[0] == null || row[0].isBlank())) continue; // línea en blanco
+                        if (header) { header = false; continue; }
+                        if (row.length == 0) continue;
+                        if (row.length == 1 && (row[0] == null || row[0].isBlank())) continue;
 
                         if (row.length < 7) {
                             model.addAttribute("error",
@@ -74,58 +85,92 @@ public class ImportController {
                             return "import/form";
                         }
 
-                        // Trim de columnas
                         for (int i = 0; i < row.length; i++) {
                             row[i] = (row[i] == null ? "" : row[i].trim());
                         }
 
-                        com.calidad.gestemed.domain.Asset a = mapRow(
-                                row[0], row[1], row[2], row[3], row[4], row[5], row[6]
-                        );
+                        Asset a = mapRow(row[0], row[1], row[2], row[3], row[4], row[5], row[6]);
 
-                        // Evitar duplicados por assetId
-                        if (!assetRepo.existsByAssetId(a.getAssetId())) {
-                            imported.add(assetRepo.save(a));
+                        try {
+                            if (!assetRepo.existsByAssetId(a.getAssetId())) {
+                                assetRepo.save(a);
+                                insertedCount++;
+                                details.add("LINE " + line + ": INSERTED");
+                            } else {
+                                duplicateCount++;
+                                duplicates.add(a.getAssetId());
+                                details.add("LINE " + line + ": DUPLICATE");
+                            }
+                        } catch (Exception e) {
+                            errorCount++;
+                            details.add("LINE " + line + ": ERROR - " + e.getMessage());
                         }
                     }
-
-                    model.addAttribute("count", imported.size());
-                    return "import/success";
                 }
 
             } else if (name.endsWith(".xlsx")) {
-                // Tu ruta de Excel sigue igual
-                java.util.List<com.calidad.gestemed.domain.Asset> imported = new java.util.ArrayList<>();
-                try (org.apache.poi.ss.usermodel.Workbook wb = org.apache.poi.ss.usermodel.WorkbookFactory.create(file.getInputStream())) {
-                    org.apache.poi.ss.usermodel.Sheet s = wb.getSheetAt(0);
-                    boolean header = true;
-                    for (org.apache.poi.ss.usermodel.Row row : s) {
-                        if (header) { header = false; continue; }
-                        if (row == null) continue;
-                        // Protege contra celdas nulas
-                        String assetId = getCellString(row.getCell(0));
-                        if (assetId.isBlank()) continue;
+                Workbook wb = WorkbookFactory.create(file.getInputStream());
+                Sheet s = wb.getSheetAt(0);
+                boolean header = true;
 
-                        com.calidad.gestemed.domain.Asset a = mapRow(
-                                assetId,
-                                getCellString(row.getCell(1)),
-                                getCellString(row.getCell(2)),
-                                getCellString(row.getCell(3)),
-                                getCellDate(row.getCell(4)),
-                                getCellString(row.getCell(5)),
-                                getCellString(row.getCell(6))
-                        );
+                for (Row row : s) {
+                    if (header) { header = false; continue; }
+                    if (row == null) continue;
+
+                    String assetId = getCellString(row.getCell(0));
+                    if (assetId.isBlank()) continue;
+
+                    Asset a = mapRow(
+                            assetId,
+                            getCellString(row.getCell(1)),
+                            getCellString(row.getCell(2)),
+                            getCellString(row.getCell(3)),
+                            getCellDate(row.getCell(4)),
+                            getCellString(row.getCell(5)),
+                            getCellString(row.getCell(6))
+                    );
+
+                    try {
                         if (!assetRepo.existsByAssetId(a.getAssetId())) {
-                            imported.add(assetRepo.save(a));
+                            assetRepo.save(a);
+                            insertedCount++;
+                            details.add("ROW " + row.getRowNum() + ": INSERTED");
+                        } else {
+                            duplicateCount++;
+                            duplicates.add(a.getAssetId());
+                            details.add("ROW " + row.getRowNum() + ": DUPLICATE");
                         }
+                    } catch (Exception e) {
+                        errorCount++;
+                        details.add("ROW " + row.getRowNum() + ": ERROR - " + e.getMessage());
                     }
                 }
-                model.addAttribute("count", /* imported.size() si lo guardaste */ 0);
-                return "import/success";
+                wb.close();
+
             } else {
                 model.addAttribute("error", "Formato no soportado. Sube un .csv o .xlsx");
                 return "import/form";
             }
+
+            // Guardar registro en ImportLog
+            importLogRepo.save(
+                    ImportLog.builder()
+                            .importedAt(LocalDateTime.now())
+                            .filename(file.getOriginalFilename())
+                            .totalRows(insertedCount + duplicateCount + errorCount)
+                            .insertedCount(insertedCount)
+                            .duplicateCount(duplicateCount)
+                            .errorCount(errorCount)
+                            .detailsJson(String.join("\n", details))
+                            .build()
+            );
+
+            model.addAttribute("count", insertedCount);
+            model.addAttribute("details", details);
+            model.addAttribute("duplicates", duplicates);
+            model.addAttribute("fileName", file.getOriginalFilename());
+
+            return "import/success";
 
         } catch (Exception e) {
             model.addAttribute("error", "No se pudo importar: " + e.getMessage());
@@ -133,6 +178,117 @@ public class ImportController {
         }
     }
 
+    // ===================== REPORTES =========================
+
+    @GetMapping("/report/current/{filename}")
+    public void currentImportReport(@PathVariable String filename, HttpServletResponse response) throws Exception {
+        Optional<ImportLog> logOpt = importLogRepo.findTopByFilenameOrderByImportedAtDesc(filename);
+        if (logOpt.isEmpty()) throw new RuntimeException("No se encontró registro de importación");
+
+        ImportLog log = logOpt.get();
+
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=import_report_" + filename + ".xlsx");
+
+        try (Workbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet("Import Report");
+            Row header = sheet.createRow(0);
+            header.createCell(0).setCellValue("Fila/Linea");
+            header.createCell(1).setCellValue("Estado");
+
+            String[] lines = log.getDetailsJson().split("\n");
+            for (int i = 0; i < lines.length; i++) {
+                Row row = sheet.createRow(i + 1);
+                row.createCell(0).setCellValue(i + 1);
+                row.createCell(1).setCellValue(lines[i]);
+            }
+
+            wb.write(response.getOutputStream());
+        }
+    }
+
+    @GetMapping("/report/current/csv/{filename}")
+    public void currentImportCsv(@PathVariable String filename, HttpServletResponse response) throws Exception {
+        Optional<ImportLog> logOpt = importLogRepo.findTopByFilenameOrderByImportedAtDesc(filename);
+        if (logOpt.isEmpty()) throw new RuntimeException("No se encontró registro de importación");
+
+        ImportLog log = logOpt.get();
+        response.setContentType("text/csv");
+        response.setHeader("Content-Disposition", "attachment; filename=import_report_" + filename + ".csv");
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("Fila/Linea,Estado\n");
+        String[] lines = log.getDetailsJson().split("\n");
+        for (int i = 0; i < lines.length; i++) {
+            sb.append(i + 1).append(",").append(lines[i].replace(",", ";")).append("\n");
+        }
+        response.getWriter().write(sb.toString());
+    }
+
+    @GetMapping("/report/current/pdf/{filename}")
+    public void currentImportPdf(@PathVariable String filename, HttpServletResponse response) throws Exception {
+        Optional<ImportLog> logOpt = importLogRepo.findTopByFilenameOrderByImportedAtDesc(filename);
+        if (logOpt.isEmpty()) throw new RuntimeException("No se encontró registro de importación");
+
+        ImportLog log = logOpt.get();
+        response.setContentType("application/pdf");
+        response.setHeader("Content-Disposition", "attachment; filename=import_report_" + filename + ".pdf");
+
+        PdfWriter writer = new PdfWriter(response.getOutputStream());
+        PdfDocument pdf = new PdfDocument(writer);
+        Document document = new Document(pdf);
+
+        document.add(new Paragraph("Reporte de Importación").setBold().setFontSize(16));
+        document.add(new Paragraph("Archivo: " + filename));
+        document.add(new Paragraph(" "));
+
+        Table table = new Table(new float[]{1, 5});
+        table.addHeaderCell("Fila/Linea");
+        table.addHeaderCell("Estado");
+
+        String[] lines = log.getDetailsJson().split("\n");
+        for (int i = 0; i < lines.length; i++) {
+            table.addCell(String.valueOf(i + 1));
+            table.addCell(lines[i]);
+        }
+
+        document.add(table);
+        document.close();
+    }
+
+    @GetMapping("/report/all")
+    public void allImportsReport(HttpServletResponse response) throws Exception {
+        List<ImportLog> logs = importLogRepo.findAll();
+
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment; filename=all_imports_report.xlsx");
+
+        try (Workbook wb = new XSSFWorkbook()) {
+            Sheet sheet = wb.createSheet("All Imports");
+            Row header = sheet.createRow(0);
+            header.createCell(0).setCellValue("Fecha");
+            header.createCell(1).setCellValue("Archivo");
+            header.createCell(2).setCellValue("Total Filas");
+            header.createCell(3).setCellValue("Insertadas");
+            header.createCell(4).setCellValue("Duplicadas");
+            header.createCell(5).setCellValue("Errores");
+
+            int rowIndex = 1;
+            for (ImportLog log : logs) {
+                Row row = sheet.createRow(rowIndex++);
+                row.createCell(0).setCellValue(log.getImportedAt().toString());
+                row.createCell(1).setCellValue(log.getFilename());
+                row.createCell(2).setCellValue(log.getTotalRows());
+                row.createCell(3).setCellValue(log.getInsertedCount());
+                row.createCell(4).setCellValue(log.getDuplicateCount());
+                row.createCell(5).setCellValue(log.getErrorCount());
+            }
+
+            wb.write(response.getOutputStream());
+        }
+    }
+
+    // ===================== MÉTODOS AUXILIARES =========================
 
     private Asset mapRow(String assetId, String model, String serial, String maker,
                          String purchase, String location, String value) {
@@ -143,7 +299,6 @@ public class ImportController {
     }
 
     private char detectSeparator(String content) {
-        // Se queda solo con la primera línea (encabezado)
         String firstLine = content.lines().findFirst().orElse("");
         int commas = firstLine.length() - firstLine.replace(",", "").length();
         int semis  = firstLine.length() - firstLine.replace(";", "").length();
@@ -153,11 +308,8 @@ public class ImportController {
     private String getCellString(Cell cell) {
         if (cell == null) return "";
         String s;
-        CellType type = cell.getCellType();
-        switch (type) {
-            case STRING:
-                s = cell.getStringCellValue();
-                break;
+        switch (cell.getCellType()) {
+            case STRING: s = cell.getStringCellValue(); break;
             case NUMERIC:
                 if (DateUtil.isCellDateFormatted(cell)) {
                     s = cell.getLocalDateTimeCellValue().toLocalDate().toString();
@@ -167,16 +319,11 @@ public class ImportController {
                     s = (v == lv) ? Long.toString(lv) : Double.toString(v);
                 }
                 break;
-            case BOOLEAN:
-                s = Boolean.toString(cell.getBooleanCellValue());
-                break;
-            case FORMULA:
-                s = cell.getCellFormula();
-                break;
-            default:
-                s = "";
+            case BOOLEAN: s = Boolean.toString(cell.getBooleanCellValue()); break;
+            case FORMULA: s = cell.getCellFormula(); break;
+            default: s = "";
         }
-        return (s == null) ? "" : s.trim();
+        return s.trim();
     }
 
     private String getCellDate(Cell cell) {
@@ -184,7 +331,6 @@ public class ImportController {
         if (cell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(cell)) {
             return cell.getLocalDateTimeCellValue().toLocalDate().toString();
         }
-        // Si Excel guardó la fecha como texto:
         return getCellString(cell);
     }
 }
