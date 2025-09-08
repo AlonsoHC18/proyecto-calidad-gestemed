@@ -12,33 +12,52 @@
         body {
             background-color: #f8f9fa;
         }
-        .success-card {
+        .card-success {
             border-radius: 15px;
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
         }
     </style>
 </head>
-
 <body>
-
 <div class="container my-5">
     <div class="row justify-content-center">
-        <div class="col-md-7">
-            <div class="card text-center success-card">
-                <div class="card-header bg-success text-white py-4">
-                    <i class="bi bi-check-circle-fill" style="font-size: 3rem;"></i>
-                    <h2 class="mt-2 mb-0">Importación Finalizada</h2>
-                </div>
+        <div class="col-lg-8">
+            <div class="card card-success">
                 <div class="card-body p-5">
                     <h4 class="card-title fw-bold mb-3">¡Éxito!</h4>
                     <p class="card-text fs-5">
-                        Se han importado exitosamente <b th:text="${count}" class="text-success">0</b> registros a la base de datos.
+                        Se han importado <b th:text="${count}" class="text-success">0</b> registros a la base de datos.
                     </p>
+
+                    <!-- 🔹 Mostrar duplicados si existen -->
+                    <div th:if="${duplicates != null and !duplicates.isEmpty()}" class="alert alert-warning mt-4">
+                        <h5><i class="bi bi-exclamation-triangle-fill me-2"></i>Registros duplicados</h5>
+                        <p>Los siguientes IDs ya existían y no se importaron:</p>
+                        <ul class="list-group">
+                            <li class="list-group-item" th:each="id : ${duplicates}" th:text="${id}"></li>
+                        </ul>
+                    </div>
+
+                    <!-- 🔹 Botones de descarga de reportes -->
+                    <div class="mt-4 d-flex flex-wrap gap-2">
+                        <a th:href="@{/import/report/current/{fileName}(fileName=${fileName})}" 
+                           class="btn btn-success" target="_blank">
+                            <i class="bi bi-file-earmark-excel me-2"></i>Descargar Excel
+                        </a>
+                        <a th:href="@{/import/report/current/csv/{fileName}(fileName=${fileName})}" 
+                           class="btn btn-info" target="_blank">
+                            <i class="bi bi-file-earmark-text me-2"></i>Descargar CSV
+                        </a>
+                        <a th:href="@{/import/report/current/pdf/{fileName}(fileName=${fileName})}" 
+                           class="btn btn-danger" target="_blank">
+                            <i class="bi bi-file-earmark-pdf me-2"></i>Descargar PDF
+                        </a>
+                    </div>
                 </div>
+
                 <div class="card-footer bg-light py-3 d-flex justify-content-center gap-2">
                     <a href="/assets" class="btn btn-primary"><i class="bi bi-box-seam me-2"></i>Ver activos</a>
-                    <a href="/import" class="btn btn-outline-info"><i class="bi bi-upload me-2"></i>Importar otro archivo</a>
-                    <a href="/" class="btn btn-secondary"><i class="bi bi-house-door me-2"></i>Inicio</a>
+                    <a href="/import" class="btn btn-outline-secondary"><i class="bi bi-arrow-counterclockwise me-2"></i>Importar otro archivo</a>
                 </div>
             </div>
         </div>
