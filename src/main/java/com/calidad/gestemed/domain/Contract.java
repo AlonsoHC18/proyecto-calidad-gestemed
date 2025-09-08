@@ -1,5 +1,3 @@
-// Clase para modelar un contrato
-
 package com.calidad.gestemed.domain;
 
 import jakarta.persistence.*;
@@ -7,59 +5,41 @@ import lombok.*;
 import java.time.LocalDate;
 import java.util.Set;
 
-@Entity @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Entity
+@Getter @Setter
+@NoArgsConstructor @AllArgsConstructor @Builder
 public class Contract {
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY)
     private Long id;
 
     private String code;
     private String clientName;
+    private String clientEmail; // NUEVO: email del cliente
+
     private LocalDate startDate;
     private LocalDate endDate;
 
     @Column(length=2000)
     private String terms;
 
-    // 30/60/90 días (MVP: por contrato)
     private Integer alertDays;
 
-    // Un activo puede estar asociado a muchos contratos
-    // Un contrato puede tener asociado muchos activos
-    // La relacion es mucho a mucho
-    // Se debe usar una tabla join que una el id del contrato y el id del activo
     @ManyToMany
     @JoinTable(name="contract_assets",
             joinColumns=@JoinColumn(name="contract_id"),
             inverseJoinColumns=@JoinColumn(name="asset_id"))
-
-    /*  Se usa Set porque:
-        Un contrato no debería tener el mismo asset repetido.
-        No  importa el orden de los assets, solo que estén.
-     */
     private Set<Asset> assets;
 
     @Enumerated(EnumType.STRING)
-    private ContractStatus status; // VIGENTE, POR_VENCER, VENCIDO
+    private ContractStatus status;
 
-
-
-    /*
-    Anotación @Transient
-        Es una anotación de JPA/Hibernate.
-
-        Indica que este método no se mapea a la base de datos.
-
-        Es decir, el status no se guarda en la tabla, se calcula en tiempo real.
-     */
     @Transient
     public String getStatus() {
-        java.time.LocalDate today = java.time.LocalDate.now();
+        LocalDate today = LocalDate.now();
         if (endDate == null) return "VIGENTE";
         if (endDate.isBefore(today)) return "VENCIDO";
         int alert = (alertDays == null ? 0 : alertDays);
-        java.time.LocalDate warnFrom = today.plusDays(alert);
+        LocalDate warnFrom = today.plusDays(alert);
         return (!endDate.isAfter(warnFrom)) ? "POR_VENCER" : "VIGENTE";
     }
-
 }
-
