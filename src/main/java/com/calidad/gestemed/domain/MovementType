@@ -1,0 +1,6 @@
+package com.calidad.gestemed.domain;
+
+public enum MovementType {
+    ENTREGA,
+    DEVOLUCION
+}
