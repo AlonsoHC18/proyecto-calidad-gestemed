@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<!DOCTYPE html>
 <html lang="es" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
@@ -31,6 +30,14 @@
         }
         .action-buttons a {
             margin-right: 0.5rem;
+        }
+        .client-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .client-email {
+            font-size: 0.85rem;
+            color: #6c757d;
         }
     </style>
 </head>
@@ -65,7 +72,12 @@
             <tbody>
             <tr th:each="c : ${contracts}">
                 <td th:text="${c.code}"></td>
-                <td th:text="${c.clientName}"></td>
+                <td>
+                    <div class="client-info">
+                        <span th:text="${c.clientName}"></span>
+                        <span class="client-email" th:text="${c.clientEmail}"></span>
+                    </div>
+                </td>
                 <td th:text="${c.startDate}"></td>
                 <td th:text="${c.endDate}"></td>
                 <td th:text="${c.alertDays}"></td>
